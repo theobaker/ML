@@ -1,22 +1,14 @@
 import random
 import numpy as np
-import numdifftools as nd
 import math
 
 
 class Variable():
-    def identity(values, name):
-        # credit to Michael Huang for the idea to find gradients using the identity array!
-        val = np.zeros((len(values)))
-        idx = [i for i,key in enumerate(values.keys()) if key==name]
-        if len(idx) == 0:
-            raise ValueError(f'Cannot find key {name} in the input values')
-        val[idx[0]] = 1
-        return val
-
     def __init__(self, name=None, evaluate=None, grad=None, representation=None):
         self.identifier = hash(random.random())
-        if evaluate == None:
+        if isinstance(evaluate, np.ndarray):
+            self.evaluate = evaluate   
+        elif evaluate == None:
             self.evaluate = lambda values: values[self.name]
         else:
             self.evaluate = evaluate
@@ -26,15 +18,15 @@ class Variable():
             self.grad = grad
         self.name = name
         self.representation = representation
-    
-    
-    def __add__(self, other):
-        if isinstance(other, (int, float)):
-            return Variable(inputs = [self], evaluate = lambda *values: other + self.evaluate(*values), grad = self.grad, representation= "%s + %s"% ((str(self)), str(other)))
-        elif isinstance(other, Variable):
-            return Variable(inputs = [self, other], evaluate = lambda *values: self.evaluate(*values) + other.evaluate(*values), grad = lambda *values: self.grad(*values) + other.grad(*values), representation= "%s + %s"% ((str(self)), str(other)))
-        else:
-            return NotImplemented
+
+    def identity(values, name):
+        # credit to Michael Huang for the idea to find gradients using an identity array of zeros
+        val = np.zeros((len(values)))
+        idx = [i for i,key in enumerate(values.keys()) if key==name]
+        if len(idx) == 0:
+            raise ValueError(f'Cannot find key {name} in the input values')
+        val[idx[0]] = 1
+        return val
     
     def sin(var):
         if isinstance(var, (int, float)):
@@ -55,13 +47,6 @@ class Variable():
         elif (isinstance(var, (Variable))):
             return Variable(evaluate= lambda values: np.log(var.evaluate(values)), grad= lambda values: 1/var.evaluate(values) * var.grad(values), representation= f'ln({var})')
         
-    
-    def grad(self, values):
-        self_location = self.order(values)
-        pre_self = self_location
-        post_self = len(values) - 1 - self_location
-        gradient_array = [0] * pre_self + [1] + [0] *post_self
-        return np.array(gradient_array)
     
     def __sub__(self, other):
         return self + other * -1
@@ -85,9 +70,6 @@ class Variable():
     def __radd__(self, other):
         return self + other
 
-    def __sub__(self, other):
-        return self + (other * -1)
-
     def __rsub__(self, other):
         return self * -1 + other
 
@@ -101,10 +83,13 @@ class Variable():
         return self * other
 
     def __pow__(self, other):
-     return Variable(evaluate=lambda values: self.evaluate(values) ** other, 
-     grad=lambda values: (other)*(self.evaluate(values) ** (other - 1))*self.grad(values), 
-     representation=lambda: "(%s ** %s)" % (str(self), str(other)))
+        return Variable(evaluate=lambda values: self.evaluate(values) ** other, grad=lambda values: (other)*(self.evaluate(values) ** (other - 1))*self.grad(values), 
+        representation=lambda: "(%s ** %s)" % (str(self), str(other)))
      
+    def __rpow__(self, other):
+        return Variable(evaluate= lambda values : other ** self.evaluate(values), grad= lambda values : np.log(other) * other ** self.evaluate(values) * self.grad(values),
+        representation= lambda: "%s ** %s" % (str(other), str(other)))
+    
     @staticmethod
     def exp(var):
         if isinstance(var, Variable):
@@ -123,5 +108,9 @@ class Variable():
         return self * reciprocal
 
     def order(self, values):
+        #keep track of all created variables without class method
         order = sorted([hash(key) for key in values.keys()])
         return order.index(hash(self))
+
+    def __hash__(self):
+        return self.identifier
